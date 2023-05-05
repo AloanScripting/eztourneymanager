@@ -6,7 +6,8 @@ import { db } from "../firestorev9/firestorev9.utils";
 const CreateTournament = () => {
   const { currentUser } = useAuth();
   const [tournamentName, setTournamentName] = useState("");
-  const [pointsPerPlace, setPointsPerPlace] = useState([0, 0, 0, 0]);
+  const [numParticipants, setNumParticipants] = useState("");
+  const [participantNames, setParticipantNames] = useState([]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -15,28 +16,31 @@ const CreateTournament = () => {
       return;
     }
 
-    const tournamentsRef = collection(db, "tournaments");
+    const userTournamentsRef = collection(db, `users/${currentUser.uid}/tournaments`);
     const queryRef = query(
-      tournamentsRef,
-      where("name", "==", tournamentName),
-      where("createdBy", "==", currentUser.uid)
+      userTournamentsRef,
+      where("name", "==", tournamentName)
     );
     const querySnapshot = await getDocs(queryRef);
 
     if (querySnapshot.empty) {
-      const newTournamentRef = doc(tournamentsRef);
+      const newTournamentRef = doc(userTournamentsRef, tournamentName);
       const tournamentData = {
         name: tournamentName,
-        pointsPerPlace,
-        participants: [],
-        createdBy: currentUser.uid,
+        participants: participantNames.map((name) => ({
+          name,
+          id: doc(collection(db, "participants")).id, // generate a new ID for each participant
+          })),
+        createdBy: currentUser.displayName,
+        userUID: currentUser.uid,
       };
 
       try {
         await setDoc(newTournamentRef, tournamentData);
         console.log(`Tournament "${tournamentName}" created successfully!`);
         setTournamentName("");
-        setPointsPerPlace([0, 0, 0, 0]);
+        setNumParticipants("");
+        setParticipantNames([]);
       } catch (error) {
         console.log("error creating tournament", error.message);
       }
@@ -47,10 +51,35 @@ const CreateTournament = () => {
     }
   };
 
-  const handlePointsPerPlaceChange = (e, index) => {
-    const newPointsPerPlace = [...pointsPerPlace];
-    newPointsPerPlace[index] = parseInt(e.target.value);
-    setPointsPerPlace(newPointsPerPlace);
+  const handleNumParticipantsSubmit = (e) => {
+    e.preventDefault();
+    const parsedNumParticipants = parseInt(numParticipants);
+    if (parsedNumParticipants >= 1 && parsedNumParticipants <= 50) {
+      const newParticipantNames = Array(parsedNumParticipants).fill("");
+      setParticipantNames(newParticipantNames);
+    } else {
+      alert("Invalid input. Please enter a number between 1 and 50.");
+    }
+  };
+
+  const handleParticipantNameChange = (e, index) => {
+    const newParticipantNames = [...participantNames];
+    newParticipantNames[index] = e.target.value;
+    setParticipantNames(newParticipantNames);
+  };
+
+
+
+  const ordinalSuffix = (num) => {
+    if (num === 1) {
+      return "1st";
+    } else if (num === 2) {
+      return "2nd";
+    } else if (num === 3) {
+      return "3rd";
+    } else {
+      return num + "th";
+    }
   };
 
   return (
@@ -70,42 +99,32 @@ const CreateTournament = () => {
         </label>
         <br />
         <label>
-          Points per place:
-          <br />
+          Number of Participants (Max: 50):
           <input
-            type="number"
-            value={pointsPerPlace[0]}
-            onChange={(e) => handlePointsPerPlaceChange(e, 0)}
+            type="text"
+            value={numParticipants}
+            onChange={(e) => setNumParticipants(e.target.value)}
           />
-          {" for 1st place"}
-          <br />
-          <input
-            type="number"
-            value={pointsPerPlace[1]}
-            onChange={(e) => handlePointsPerPlaceChange(e, 1)}
-          />
-          {" for 2nd place"}
-          <br />
-          <input
-            type="number"
-            value={pointsPerPlace[2]}
-            onChange={(e) => handlePointsPerPlaceChange(e, 2)}
-          />
-          {" for 3rd place"}
-          <br />
-          <input
-            type="number"
-            value={pointsPerPlace[3]}
-            onChange={(e) => handlePointsPerPlaceChange(e, 3)}
-          />
-          {" for 4th place"}
-          <br />
+          <button onClick={handleNumParticipantsSubmit}>Submit</button>
         </label>
+        <br />
+        {participantNames.map((name, index) => (
+          <div key={index}>
+            <label>
+              {ordinalSuffix(index + 1)} Participant Name:
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => handleParticipantNameChange(e, index)}
+              />
+            </label>
+            <br />
+          </div>
+        ))}
         <br />
         <button type="submit">Create Tournament</button>
       </form>
     </div>
   );
-};
-
+}
 export default CreateTournament;
