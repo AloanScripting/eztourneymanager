@@ -10,7 +10,7 @@ import ViewTournaments from './components/ViewTournaments';
 import { auth } from './firestorev9/firestorev9.utils';
 import { AuthProvider } from "./utils/AuthProvider";
 import Dashboard from './components/Dashboard';
-import TournamentHolder from './components/TournamentHolder';
+// import TournamentStandings from './components/TournamentStandings';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -42,7 +42,6 @@ function App() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/create-tournament" element={<CreateTournament currentUser={currentUser} />} />
-          <Route path="/tournament-holder/:id" element={<TournamentHolder />} />
           <Route path="/" element={<Home />} />
           <Route path="/view-tournaments" element={<ViewTournaments currentUser={currentUser} />} />
         </Routes>
