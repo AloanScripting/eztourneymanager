@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getCurrentUser, db } from '../firestorev9/firestorev9.utils';
-import { collection, query, getDocs, doc, setDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, setDoc, updateDoc, getDoc, writeBatch } from 'firebase/firestore';
 
 const ViewTournaments = () => {
   const [tournamentsData, setTournamentsData] = useState(null);
@@ -15,7 +15,7 @@ const ViewTournaments = () => {
       const tournamentsRef = collection(db, `users/${currentUser.uid}/tournaments`);
       const querySnapshot = await getDocs(query(tournamentsRef));
 
-      const tournamentsData = querySnapshot.docs.map(doc => ({
+      const tournamentsData = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         uid: doc.uid,
         ...doc.data(),
@@ -27,6 +27,20 @@ const ViewTournaments = () => {
     fetchTournamentsData();
   }, []);
 
+  const resetPoints = async (tournamentId, participants) => {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) return;
+
+    const tournamentRef = doc(db, `users/${currentUser.uid}/tournaments/${tournamentId}`);
+
+    const updatedParticipants = {};
+    Object.keys(participants).forEach((key) => {
+      updatedParticipants[key] = { ...participants[key], points: 0 };
+    });
+
+    await setDoc(tournamentRef, { participants: updatedParticipants }, { merge: true });
+  };
+
   const handleTournamentClick = (tournament) => {
     setSelectedTournament(tournament);
   };
@@ -35,132 +49,153 @@ const ViewTournaments = () => {
     setSelectedTournament(null);
   };
 
-  const handlePointsPerPlaceChange = async (participantId, event) => {
+  const handleOldPoints = async (participantId, event) => {
     const currentUser = await getCurrentUser();
     if (!currentUser) return;
 
-    const tournamentRef = doc(db, `users/${currentUser.uid}/tournaments/${selectedTournament.id}/participants/${participantId}`);
+    const value = parseInt(event.target.value);
 
-    await setDoc(tournamentRef, {
-      ...selectedTournament.participants[participantId],
-      pointsPerPlace: event.target.value,
-    }, { merge: true });
+    const oldPoints = isNaN(value) ? 0 : value;
 
-    setSelectedTournament({
-      ...selectedTournament,
-      participants: {
-        ...selectedTournament.participants,
-        [participantId]: {
-          ...selectedTournament.participants[participantId],
-          pointsPerPlace: event.target.value,
-        },
-      },
-    });
-  };
-
-  const handleParticipantNameChange = async (participantId, event) => {
-    const currentUser = await getCurrentUser();
-    if (!currentUser) return;
-
-    const tournamentRef = doc(db, `users/${currentUser.uid}/tournaments/${selectedTournament.id}/participants/${participantId}`);
-
-    await setDoc(tournamentRef, {
-      ...selectedTournament.participants[participantId],
-      name: event.target.value,
-    }, { merge: true });
-
-    setSelectedTournament({
-      ...selectedTournament,
-      participants: {
-        ...selectedTournament.participants,
-        [participantId]: {
-          ...selectedTournament.participants[participantId],
-          name: event.target.value,
-        },
-      },
-    });
-  };
-
-  const handleSubmitPoints = async (participantId, event) => {
-    const currentUser = await getCurrentUser();
-    if (!currentUser) return;
-  
-    const newPoints = parseInt(event.target.value);
     const tournamentRef = doc(
       db,
       `users/${currentUser.uid}/tournaments/${selectedTournament.id}/participants/${participantId}`
     );
-  
-    await setDoc(tournamentRef, {
-      ...selectedTournament.participants[participantId],
-      points: newPoints,
-    });
-  
+
+    await setDoc(
+      tournamentRef,
+      {
+        ...selectedTournament.participants[participantId],
+        oldPoints: oldPoints,
+      },
+      { merge: true }
+    );
     setSelectedTournament({
       ...selectedTournament,
       participants: {
         ...selectedTournament.participants,
         [participantId]: {
           ...selectedTournament.participants[participantId],
-          points: newPoints,
+          oldPoints: oldPoints,
         },
       },
     });
+    console.log(oldPoints);
   };
-  
-  if (selectedTournament) {
-    return (
-      <div>
-        <h1>Tournament Holder</h1>
-        <p>Tournament name: {selectedTournament.name}</p>
-        <p>Created by: {selectedTournament.createdBy}</p>
-        <button onClick={handleBackClick}>Back to tournaments</button>
-        <table>
-          <thead>
-            <tr>
-              <th>Participant Name</th>
-              <th>Total Points</th>
-              <th>Update</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(selectedTournament.participants).map(([id, participant]) => (
-              <tr key={id}>
-                <td>
-                  <input type="text" value={participant.name} onChange={(event) => handleParticipantNameChange(id, event)} />
-                </td>
-                <td>
-                <input type="number" min="0" max="100"  defaultValue={participant.pointsPerPlace} onChange={(event) => handlePointsPerPlaceChange(id, event)} />
-                </td>
-                <td>
-                  <button onClick={(event) => handleSubmitPoints(id, event)}>Submit Points</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+
+  const updateParticipantPoints = async (participantId, event) => {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) return;
+    const tournamentRef = doc(
+      db,
+      `users/${currentUser.uid}/tournaments/${selectedTournament.id}/participants/${participantId}`
     );
-  }
+
+    let points = parseInt(event.target.value);
+    if (isNaN(points)) {
+      points = 0;
+    }
+
+    await updateDoc(tournamentRef, {
+  ...selectedTournament.participants[participantId],
+  points: points,
+});
+  };
+  const handleAllPointsSubmit = async () => {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) return;
+  
+    const participantsToUpdate = Object.entries(selectedTournament.participants)
+  .filter(([_, participant]) => participant.oldPoints !== undefined)
+  .map(([id, participant]) => ({ id, points: participant.oldPoints + participant.points }));
+
+
+  
+    const batch = writeBatch();
+    participantsToUpdate.forEach(({ id, points }) => {
+      const participantRef = doc(
+        db,
+        `users/${currentUser.uid}/tournaments/${selectedTournament.id}/participants/${id}`
+      );
+      batch.update(participantRef, { points });
+    });
+  
+    await batch.commit();
+  
+    const updatedTournamentsRef = collection(db, `users/${currentUser.uid}/tournaments`);
+    const updatedTournamentsSnapshot = await getDocs(query(updatedTournamentsRef));
+    const updatedTournamentsData = updatedTournamentsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      uid: doc.uid,
+      ...doc.data(),
+    }));
+    setTournamentsData(updatedTournamentsData);
+  
+    setSelectedTournament(null);
+  };
+
 
   return (
     <div>
-      <h1>Tournament Holder</h1>
-      {tournamentsData && tournamentsData.length > 0 ? (
-        <ul>
-          {tournamentsData.map((tournament) => (
-            <li key={tournament.id}>
-              <Link to="#" onClick={() => handleTournamentClick(tournament)}>
-                {tournament.name}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>No tournaments found.</p>
-      )}
-    </div>
-  );
+      <h1>Tournaments</h1>
+      {!selectedTournament ? (
+        <div>
+          {tournamentsData ? (
+            <ul>
+              {tournamentsData.map((tournament) => (
+                <li key={tournament.id}>
+                  <Link to="#" onClick={() => handleTournamentClick(tournament)}>
+                    {tournament.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>Loading...</p>
+          )}      <Link to="/create-tournament">Add new tournament</Link>
+          </div>
+        ) : (
+          <div>
+            <h2>{selectedTournament.name}</h2>
+            <button onClick={() => resetPoints(selectedTournament.id, selectedTournament.participants)}>
+              Reset points
+            </button>
+            <button onClick={handleBackClick}>Back to tournaments</button>
+            <table>
+              <thead>
+                <tr>
+                  <th>Participant name</th>
+                  <th>Add/Subtract Points</th>
+                  <th>Current Points</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.keys(selectedTournament.participants).map((participantId) => (
+                  <tr key={participantId}>
+                    <td>{selectedTournament.participants[participantId].name}</td>
+                    <td>
+                      <input
+                        type="number"
+                        value={selectedTournament.participants[participantId].points}
+                        onChange={(event) => updateParticipantPoints(participantId, event)}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        value={selectedTournament.participants[participantId].oldPoints || ''}
+                        onChange={(event) => handleOldPoints(participantId, event)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button onClick={handleAllPointsSubmit}>Submit all</button>
+          </div>
+        )}
+      </div>
+      );
 };
 
 export default ViewTournaments;

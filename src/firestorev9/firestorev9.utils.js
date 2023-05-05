@@ -9,9 +9,12 @@ import {
 } from 'firebase/auth';
 import { 
   collection, 
-  getFirestore 
+  getFirestore,
+  doc, 
+  updateDoc, 
+  increment,
 } from 'firebase/firestore';
-
+import { useAuth } from "../contexts/AuthContext";
 const firebaseConfig = {
   apiKey: "AIzaSyDZ3G09nuLCdqOqT1y_JLCkht3QRNLINas",
   authDomain: "ip-point-tracker.firebaseapp.com",
@@ -88,6 +91,10 @@ export const createUserProfileDocument = async (userAuth, additionalData) => {
   return userRef;
 };
 
+
+
+
+
 export {
   auth,
   db,
@@ -97,7 +104,6 @@ export {
   signInWithPopup,
   GoogleAuthProvider,
   FacebookAuthProvider,
-
 };
 
 export const firestore = db;
